@@ -1,0 +1,29 @@
+name: FootTrack_ENV
+
+channels:
+  - bioconda
+  - conda-forge
+
+dependencies:
+  - python
+  - pysam
+  - pybigwig
+  - samtools
+  - moods
+  - pybedtools
+  - bedtools
+  - cython
+  - matplotlib>=2
+  - numpy
+  - scipy
+  - pypdf2
+  - scikit-learn
+  - svist4get>=1.2.24
+  - pyyaml>=5.1
+  - boto3
+  - adjustText>=0.8
+  - sklearn-contrib-lightning
+  - xlsxwriter
+  - pip
+  - pip:
+    - gimmemotifs
