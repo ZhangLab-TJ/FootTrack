@@ -22,6 +22,7 @@ To install directly from the repository, the python package Cython is needed to 
 cd FootTrack
 conda env create -f foottrack_env.yaml
 conda activate FootTrack_ENV
+pip install cython
 python setup.py install
 ```
 
