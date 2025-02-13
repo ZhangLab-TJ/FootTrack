@@ -124,7 +124,7 @@ class CrdList(list):
 				bias[cut - reg_start] = crd_obj.bias
 		return bias
 
-def correct_and_pval(meth_f, regions_lst, w, bias_f, fasta_f, k_flank, split_strands, standard, mood):
+def correct_and_pval(meth_f, regions_lst, w, bias_f, fasta_f, k_flank, split_strands, standard, mode):
 
 	strands = ["forward", "reverse"]
 	L = 2 * k_flank + 1
@@ -175,13 +175,13 @@ def correct_and_pval(meth_f, regions_lst, w, bias_f, fasta_f, k_flank, split_str
 			#################################
 			###### Correction of crds #######
 			#################################
-			if mood == "local":
+			if mode == "local":
 				signal_mean = fast_rolling_math(uncorrected_signal, w, "mean")
 				expected = signal_mean * bias
 				corrected = uncorrected_signal - expected
 				out_signals[reg_key]["expected"][strand] = expected
 				out_signals[reg_key]["corrected"][strand] = corrected
-			elif mood == "global":
+			elif mode == "global":
 				expected = standard * bias
 				corrected = uncorrected_signal - expected
 				out_signals[reg_key]["expected"][strand] = expected
@@ -270,7 +270,7 @@ def run_depth_biascorrect(args):
 	split_strands = args.split_strands
 	verbosity = args.verbosity
 	cores = args.cores
-	mood = args.mood
+	mode = args.mode
 
 	# Print info on run
 	logger = foottrackLogger("DepthBiascorrect", verbosity)
@@ -293,7 +293,7 @@ def run_depth_biascorrect(args):
 
 	logger.info("Start calculate correct signal and p-value")
 	worker_pool = mp.Pool(processes=cores)
-	task_list = [worker_pool.apply_async(correct_and_pval, args=[meth_f, chunk, w, bias_f, fasta_f, k_flank, split_strands, standard, mood]) for chunk in output_regions_chunks]
+	task_list = [worker_pool.apply_async(correct_and_pval, args=[meth_f, chunk, w, bias_f, fasta_f, k_flank, split_strands, standard, mode]) for chunk in output_regions_chunks]
 	worker_pool.close()
 	monitor_progress(task_list, logger, "Correction progress:")	#does not exit until tasks in task_list finished
 	results = [task.get() for task in task_list]

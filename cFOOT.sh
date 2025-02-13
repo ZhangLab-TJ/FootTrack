@@ -125,7 +125,7 @@ cat $dir/sample.txt | while read i; do
 	# 06.FootTrack
 	# 01.BiasCorrect
 	mkdir -p $dir/06.FootTrack/01.BiasCorrect; cd $dir/06.FootTrack/01.BiasCorrect
-	FootTrack BiasCorrect -b $ori_bw -g ${genome} -p $atac --cores ${core} --k_flank 10 --score_mat PWM --mood global --window 100 --prefix ${i} --outdir ./ --extend 0 --bias-pkl ${bias} --track-off bias expected --verbosity 5 >> ${i}_BiasCorrect.log 2>&1;
+	FootTrack BiasCorrect -b $ori_bw -g ${genome} -p $atac --cores ${core} --k_flank 10 --score_mat PWM --mode global --window 100 --prefix ${i} --outdir ./ --extend 0 --bias-pkl ${bias} --track-off bias expected --verbosity 5 >> ${i}_BiasCorrect.log 2>&1;
 	echo "****************** ${i} 01.BiasCorrect done *******************"
 	# 02.ScoreBigwig
 	mkdir -p $dir/06.FootTrack/02.ScoreBigwig; cd $dir/06.FootTrack/02.ScoreBigwig

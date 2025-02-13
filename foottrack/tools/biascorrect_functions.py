@@ -249,7 +249,7 @@ def bias_correction(regions_lst, params, bias_obj, standard):
 	w = params.window
 	f = int(w/2.0)
 	qs = params.qs
-	mood = params.mood
+	mode = params.mode
 	
 	f_extend = k_flank + f
 
@@ -299,7 +299,7 @@ def bias_correction(regions_lst, params, bias_obj, standard):
 			###### Correction of crs ######
 			#################################
 			# local background
-			if mood == "local":
+			if mode == "local":
 				signal_mean = fast_rolling_math(uncorrected_signal, w, "mean")
 				expected = signal_mean * bias
 				corrected = uncorrected_signal - expected
@@ -307,7 +307,7 @@ def bias_correction(regions_lst, params, bias_obj, standard):
 				out_signals[reg_key]["corrected"][strand] = corrected
 			
 			# global background
-			elif mood == "global":
+			elif mode == "global":
 				expected = standard * bias
 				corrected = uncorrected_signal - expected
 				out_signals[reg_key]["expected"][strand] = expected
