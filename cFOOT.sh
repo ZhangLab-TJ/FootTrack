@@ -129,7 +129,7 @@ cat $dir/sample.txt | while read i; do
 	echo "****************** ${i} 01.BiasCorrect done *******************"
 	# 02.ScoreBigwig
 	mkdir -p $dir/06.FootTrack/02.ScoreBigwig; cd $dir/06.FootTrack/02.ScoreBigwig
-	FootTrack ScoreBigwig --signal $dir/06.FootTrack/01.BiasCorrect/${i}_corrected.bw --regions $dir/06.FootTrack/01.BiasCorrect/${i}_effective_ranges.bed --output ${i}_ScoreBigWig.bw --fp-min 10 --fp-max 10 --flank-min 20 --flank-max 20 --extend 0 --cores ${core} >> ${i}_ScoreBigwig.log 2>&1;
+	FootTrack ScoreBigwig --signal $dir/06.FootTrack/01.BiasCorrect/${i}_corrected.bw --regions $atac --output ${i}_ScoreBigWig.bw --fp-min 10 --fp-max 10 --flank-min 20 --flank-max 20 --extend 0 --cores ${core} >> ${i}_ScoreBigwig.log 2>&1;
 	echo "****************** ${i} 02.ScoreBigwig done *******************"
 
 done
