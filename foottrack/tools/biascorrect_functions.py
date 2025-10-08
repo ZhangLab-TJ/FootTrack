@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import sys
 import gc
@@ -145,7 +147,7 @@ class OneCr():
 
 #--------------------------------------------------------------------------------------------------#
 
-def count_crs(regions_lst, params):
+def count_crs(regions_list, params):
 	""" Count crs from bw within regions (counts position of pos to prevent double-counting) """
 
 	bw_f = params.bw
@@ -156,23 +158,22 @@ def count_crs(regions_lst, params):
 
 	#Count per region
 	cr_count = 0
-	logger.spam("Started counting region_chunk ({0} -> {1})".format("_".join([str(element) for element in regions_lst[0]]), "_".join([str(element) for element in regions_lst[-1]])))
+	logger.spam("Started counting region_chunk ({0} -> {1})".format("_".join([str(element) for element in regions_list[0]]), "_".join([str(element) for element in regions_list[-1]])))
 	
-	for region in regions_lst:
+	for region in regions_list:
 		cr_lst = CrList.from_bw(bw_obj, region)
 		logger.spam("- {0} ({1} crs)".format(region, len(cr_lst)))
 		for cr in cr_lst:  
 			if cr.pos > region.start and cr.pos <= region.end:  #only crs within borders
 				cr_count += 1
 				
-	logger.spam("Finished counting region_chunk ({0} -> {1})".format("_".join([str(element) for element in regions_lst[0]]), "_".join([str(element) for element in regions_lst[-1]])))
+	logger.spam("Finished counting region_chunk ({0} -> {1})".format("_".join([str(element) for element in regions_list[0]]), "_".join([str(element) for element in regions_list[-1]])))
 	bw_obj.close()
 
 	return(cr_count)
 
 #--------------------------------------------------------------------------------------------------#
-
-def bias_estimation(regions_lst, params):
+def bias_estimation(regions_list, params):
 	""" Estimates bias of insertions within regions """
 
 	#Info on run
@@ -194,7 +195,7 @@ def bias_estimation(regions_lst, params):
 	strands = ["forward", "reverse"]
 
 	#Estimate bias at each region
-	for region in regions_lst:
+	for region in regions_list:
 
 		cr_lst = CrList().from_bw(bw_obj, region)
 
@@ -237,8 +238,8 @@ def relu(x, a, b):
 
 #--------------------------------------------------------------------------------------------------#
 
-def bias_correction(regions_lst, params, bias_obj, standard):
-	""" Corrects bias in poss (from bwfile) using estimated bias """
+def bias_correction(regions_list, params, bias_obj, standard, bw_chrom_info):
+	""" Corrects bias in conversion rate (from bwfile) using estimated bias """
 
 	logger = foottrackLogger("", params.verbosity, params.log_q) 	#sending all logger calls to log_q
 
@@ -264,7 +265,7 @@ def bias_correction(regions_lst, params, bias_obj, standard):
 	out_signals = {}
 
 	#Go through each region
-	for region_obj in regions_lst:
+	for region_obj in regions_list:
 
 		region_obj.extend_reg(f_extend)
 		reg_len = region_obj.get_length()	#length including flanking
@@ -373,96 +374,6 @@ def bias_correction(regions_lst, params, bias_obj, standard):
 	gc.collect()
 
 	return([pre_bias, post_bias])
-
-def bias_generate(regions_lst, params, bias_obj):
-	""" Corrects bias in poss (from bwfile) using estimated bias """
-
-	logger = foottrackLogger("", params.verbosity, params.log_q) 	#sending all logger calls to log_q
-
-	bw_f = params.bw
-	fasta_f = params.genome
-	k_flank = params.k_flank
-	L = 2 * k_flank + 1
-	w = params.window
-	f = int(w/2.0)
-	qs = params.qs
-
-	f_extend = k_flank + f
-
-	strands = ["forward", "reverse"]
-
-	#Open bwfile and fasta
-	bw_obj = pyBigWig.open(bw_f)
-	fasta_obj = pysam.FastaFile(fasta_f)
-
-	out_signals = {}
-
-	#Go through each region
-	for region_obj in regions_lst:
-
-		region_obj.extend_reg(f_extend)
-		reg_key = (region_obj.chrom, region_obj.start+f_extend, region_obj.end-f_extend)	#output region
-		out_signals[reg_key] = {"bias":{}}
-
-		#Get pos positions for each cr
-		cr_lst = CrList().from_bw(bw_obj, region_obj)
-		#Get sequence in this region
-		sequence_obj = GenomicSequence(region_obj).from_fasta(fasta_obj)
-		for cr in cr_lst:
-			cr.get_strand(sequence_obj)
-			cr.get_kmer(sequence_obj, k_flank)
-			cr.get_bias(bias_obj)
-		logger.spam("Cr {0} crs from region {1}".format(len(cr_lst), region_obj))
-
-		for_lst, rev_lst = cr_lst.split_strands()
-		cr_lst_strand = {"forward": for_lst, "reverse": rev_lst}
-
-		for strand in strands:
-
-			########################################
-			####### Uncorrected crs  and bias ######
-			########################################
-
-			bias_log = cr_lst_strand[strand].bias(region_obj)
-			bias = np.power(2, bias_log)
-			out_signals[reg_key]["bias"][strand] = bias 
-
-		#######################################
-		########    Write to queue    #########
-		#######################################
-		#Set size back to original
-		for track in out_signals[reg_key]:
-			for strand in out_signals[reg_key][track]:
-				out_signals[reg_key][track][strand] = out_signals[reg_key][track][strand][f_extend:-f_extend]
-
-		#Calculate "both" if split_strands == False
-		if params.split_strands == False:
-			for track in out_signals[reg_key]:
-				forward = out_signals[reg_key][track]["forward"]
-				reverse = out_signals[reg_key][track]["reverse"]				
-				# sum_without_nans = np.nan_to_num(forward) + np.nan_to_num(reverse)
-				sum_without_nans = np.nansum([forward, reverse], axis=0)
-				combined_sum = np.where(np.isnan(forward) & np.isnan(reverse), np.nan, sum_without_nans)
-				out_signals[reg_key][track]["both"] = combined_sum
-
-		#Send to queue
-		strands_to_write = ["forward", "reverse"] if params.split_strands == True else ["both"]
-		for track in out_signals[reg_key]:
-
-			#Send to writer per strand
-			for strand in strands_to_write:
-				key = "{0}:{1}".format(track, strand)
-
-				if key in qs: #only write the signals where the files were initialized
-					logger.spam("Sending {0} signal from region {1} to writer queue".format(key, reg_key))
-					qs[key].put((key, reg_key, out_signals[reg_key][track][strand]))
-
-		#Sent to qs - delete from this process
-		out_signals[reg_key] = None
-
-	bw_obj.close()
-	fasta_obj.close()
-	gc.collect()
 
 ####################################################################################################
 ######################################## Plot functions ############################################
