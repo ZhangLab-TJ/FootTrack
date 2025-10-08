@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-BiasCorrect.py: Estimates cFOOT-seq bias and corrects cr counts from .bw and .fasta input
+BiasCorrect.py: Estimates cFOOT-seq bias and corrects conversion rate from .bw and .fasta input
 
 """
 
@@ -139,7 +139,7 @@ def run_biascorrect(args):
 		fastalen = fasta_chrom_info[chrom]
 		if bwlen != fastalen:
 			logger.warning("(Fastafile)\t{0} has length {1}".format(chrom, fasta_chrom_info[chrom]))
-			logger.warning("(Bamfile)\t{0} has length {1}".format(chrom, bw_chrom_info[chrom]))
+			logger.warning("(Bwfile)\t{0} has length {1}".format(chrom, bw_chrom_info[chrom]))
 			sys.exit("Error: .bw and .fasta have different chromosome lengths. Please make sure the genome file is similar to the one used in mapping.")
 
 	#Subset bw_references to those for which there are sequences in fasta
@@ -172,11 +172,6 @@ def run_biascorrect(args):
 
 	logger.info("Processing input/output regions")
 
-	#Chromosomes included in analysis
-	genome_regions = RegionList().from_list([OneRegion([chrom, 0, bw_chrom_info[chrom]]) for chrom in chrom_in_common]) #full genome length
-	logger.debug("CHROMS\t{0}".format("; ".join(["{0} ({1})".format(reg.chrom, reg.end) for reg in genome_regions])))
-	genome_bp = sum([region.get_length() for region in genome_regions])
-
 	# calculate general conversion rate
 	if args.standard:
 		standard = args.standard
@@ -193,9 +188,21 @@ def run_biascorrect(args):
 				total_length += length
 		standard = signal_sum / total_length
 
+	#Chromosomes included in analysis
+	genome_regions = RegionList().from_list([OneRegion([chrom, 0, bw_chrom_info[chrom]]) for chrom in chrom_in_common]) #full genome length
+	logger.debug("CHROMS\t{0}".format("; ".join(["{0} ({1})".format(reg.chrom, reg.end) for reg in genome_regions])))
+	genome_bp = sum([region.get_length() for region in genome_regions])
+
 	# Process peaks
 	if args.peaks != None:
 		peak_regions = RegionList().from_bed(args.peaks)
+		peak_regions.merge()
+		for i in range(len(peak_regions)-1, -1, -1):
+			region = peak_regions[i]
+			peak_regions[i] = region.check_boundary(bw_chrom_info, "cut")	#regions are cut/removed from list
+			if peak_regions[i] is None:
+				logger.warning("Peak region {0} was removed at it is either out of bounds or not in the chromosomes given in genome/bw.".format(region.tup(), i+1))
+				del peak_regions[i]
 	else:
 		chroms = bwfile.chroms().keys()
 		chrom_effective_ranges = []
@@ -217,9 +224,16 @@ def run_biascorrect(args):
 		peak_regions = RegionList().from_bed(output_bed_file)
 		bwfile.close()
 
-	#### Statistics about regions ####
-	blacklist_regions = RegionList([])
+	#Extend regions to make sure extend + flanking for window/flank are within boundaries
+	flank_extend = args.k_flank + int(args.window/2.0)
+	peak_regions.apply_method(OneRegion.extend_reg, args.extend + flank_extend)
+	peak_regions.merge()	
+	peak_regions.apply_method(OneRegion.check_boundary, bw_chrom_info, "cut")
+	peak_regions.apply_method(OneRegion.extend_reg, -flank_extend)	#Cut to needed size knowing that the region will be extended in function
 
+	#Remove blacklisted regions and chromosomes not in common
+	# blacklist_regions = RegionList().from_bed(args.blacklist) if args.blacklist != None else RegionList([])	 #fill in with regions from args.blacklist
+	blacklist_regions = RegionList([])
 	regions_dict = {"genome": genome_regions, "peak_regions": peak_regions}
 	sub="peak_regions"
 	regions_sub = regions_dict[sub]
@@ -228,6 +242,11 @@ def run_biascorrect(args):
 	regions_sub.keep_chroms(chrom_in_common)
 	regions_dict[sub] = regions_sub
 
+	#Sort according to order in bw_references:
+	peak_regions.loc_sort(bw_references)
+	chrom_order = {bw_references[i]:i for i in range(len(bw_references))}	 #for use later when sorting output
+
+	#### Statistics about regions ####
 	genome_bp = sum([region.get_length() for region in regions_dict["genome"]])
 	for key in regions_dict:
 		total_bp = sum([region.get_length() for region in regions_dict[key]])
@@ -305,7 +324,7 @@ def run_biascorrect(args):
 
 	output_regions.loc_sort(bw_references)		#sort in order of references
 	output_regions_chunks = output_regions.chunks(args.split)
-	# no_tasks = float(len(output_regions_chunks))
+	no_tasks = float(len(output_regions_chunks))
 	chunk_sizes = [len(chunk) for chunk in output_regions_chunks]
 	logger.debug("All regions chunked: {0} ({1})".format(len(output_regions), chunk_sizes))
 
@@ -350,8 +369,7 @@ def run_biascorrect(args):
 
 	#Start correction
 	logger.debug("Starting correction")
-	task_list = [worker_pool.apply_async(bias_correction, args=[chunk, args, bias_obj, standard]) for chunk in output_regions_chunks]
-
+	task_list = [worker_pool.apply_async(bias_correction, args=[chunk, args, bias_obj, standard, bw_chrom_info]) for chunk in output_regions_chunks]
 	worker_pool.close()
 	monitor_progress(task_list, logger, "Correction progress:")	#does not exit until tasks in task_list finished
 	results = [task.get() for task in task_list]
@@ -359,7 +377,6 @@ def run_biascorrect(args):
 	#Get all results 
 	pre_bias = results[0][0]	#initialize with first result
 	post_bias = results[0][1]	#initialize with first result
-
 	for result in results[1:]:
 		pre_bias_chunk = result[0]
 		post_bias_chunk = result[1]
